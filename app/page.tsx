@@ -367,11 +367,11 @@ export default function Home() {
   return (
     <main className="w-full min-h-screen p-8 flex flex-col items-center bg-gray-100">
       <h1 className="text-3xl font-bold mb-8 text-gray-800">
-        Upload NFT Metadata to Pinata & Deploy Contracts
+        CDP SDK: Upload NFT Metadata to Pinata & Deploy Contracts
       </h1>
 
       <div className="w-full max-w-md bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-lg font-bold mb-4">About ERC721 vs ERC1155</h2>
+        <h2 className="text-lg font-bold mb-4 text-black">About ERC721 vs ERC1155</h2>
         <p className="text-gray-700 mb-4">Ethereum's main token types:</p>
         <ul className="list-disc list-inside text-gray-700 mb-4">
           <li>ERC-20: Regular tokens that are all identical</li>

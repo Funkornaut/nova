@@ -6,7 +6,7 @@ from cdp import Cdp, Wallet
 import time
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Load environment variables
 load_dotenv()
@@ -16,7 +16,8 @@ CDP_API_PRIVATE_KEY = os.getenv('CDP_API_PRIVATE_KEY')
 
 # Configure CDP SDK
 if not CDP_API_KEY_NAME or not CDP_API_PRIVATE_KEY:
-    raise EnvironmentError("Missing CDP API credentials in environment variables")
+    print("Missing CDP API credentials in environment variables")
+    raise EnvironmentError("CDP API credentials are required.")
 Cdp.configure(CDP_API_KEY_NAME, CDP_API_PRIVATE_KEY)
 
 # In-memory storage for deployment status (for demonstration purposes)
@@ -95,7 +96,9 @@ def wait_for_deployment(deployed_contract, timeout=60):
 def deploy_contract():
     """Deploy a smart contract (ERC721 or ERC1155) and return contract details."""
     try:
-        data = request.json
+        data = request.get_json()  # Ensure JSON parsing
+        if not data:
+            return jsonify({"success": False, "error": "Invalid JSON payload"}), 400
         print(f"Received deployment request: {data}")
 
         # Step 1: Create Wallet
@@ -163,4 +166,4 @@ def deploy_contract():
         }), 500
 
 if __name__ == '__main__':
-    app.run(port=5328)
+    app.run(host="0.0.0.0", port=5328, debug=True)  # Debug mode enabled for detailed logs
