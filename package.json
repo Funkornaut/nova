@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "flask-dev": "FLASK_APP=api/index python3 -m flask run -p 5328",
+    "flask-dev": "FLASK_APP=api/index python3 -m flask run -p 5328 --host=0.0.0.0",
     "next-dev": "next dev",
     "dev": "concurrently \"npm run next-dev\" \"npm run flask-dev\""
   },
