@@ -18,3 +18,12 @@ body {
   color: var(--foreground);
   background: var(--background);
 }
+
+input,
+textarea {
+  color: black !important;
+}
+
+::placeholder {
+  color: #A0AEC0; /* Lighter gray color for placeholder text */
+}
