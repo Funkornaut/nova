@@ -6,10 +6,13 @@ This project provides a template for deploying NFTs on Base Sepolia using the Co
 
 ## Features
 
-- Upload NFT metadata to IPFS via Pinata
 - Deploy ERC-721 and ERC-1155 NFT smart contracts
-- Real-time tracking of deployment progress
-- Automatic wallet creation and funding with testnet ETH on Base Sepolia
+- Upload and manage token metadata through IPFS via Pinata
+- Support for both single and multi-token collections
+- Proper token URI structure with `<base-uri>/<token-id>` format
+- Automatic token minting post-deployment
+- Real-time deployment progress tracking
+- Testnet ETH funding via CDP faucet
 
 ## Feature Requests
 
@@ -69,11 +72,22 @@ CDP_API_PRIVATE_KEY=Your CDP private key
 ```
 
 ## Usage
-1. Enter NFT metadata in the frontend form.
-2. Upload metadata to IPFS via the "Upload" button.
-3. Select contract type (ERC-721 or ERC-1155).
-4. Click "Deploy" to deploy the contract and monitor progress.
-5. View the deployed contract on BaseScan when complete.
+
+1. Enter metadata for one or more tokens (name, description, image URL, attributes)
+2. Select contract type (ERC-721 for single tokens or ERC-1155 for multi-token collections)
+3. Deploy contract - this will:
+   - Upload metadata to IPFS with proper token ID structure
+   - Create and fund a testnet wallet
+   - Deploy the contract with correct base URI
+   - Mint tokens automatically
+4. View deployed contract and token metadata on BaseScan/IPFS
+
+## Technical Notes
+
+- Metadata is stored on IPFS with individual token URIs in format `<base-uri>/<token-id>`
+- ERC-721 deployments mint a single token with ID 1
+- ERC-1155 deployments mint sequential tokens based on collection size
+- Base URI points to IPFS directory containing all token metadata
 
 ---
 

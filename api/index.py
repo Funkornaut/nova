@@ -2,8 +2,10 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
+import requests
 from cdp import Cdp, Wallet
 import time
+import traceback
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -13,14 +15,18 @@ load_dotenv()
 
 CDP_API_KEY_NAME = os.getenv('CDP_API_KEY_NAME')
 CDP_API_PRIVATE_KEY = os.getenv('CDP_API_PRIVATE_KEY')
+PINATA_API_KEY = os.getenv('PINATA_API_KEY')
+PINATA_SECRET_API_KEY = os.getenv('PINATA_SECRET_API_KEY')
+
+
 
 # Configure CDP SDK
 if not CDP_API_KEY_NAME or not CDP_API_PRIVATE_KEY:
     print("Missing CDP API credentials in environment variables")
     raise EnvironmentError("CDP API credentials are required.")
+
 Cdp.configure(CDP_API_KEY_NAME, CDP_API_PRIVATE_KEY)
 
-# In-memory storage for deployment status (for demonstration purposes)
 deployment_status = {
     "step": "",
     "status": ""
@@ -29,141 +35,133 @@ deployment_status = {
 def update_deployment_status(step, status):
     deployment_status["step"] = step
     deployment_status["status"] = status
-
-@app.route('/api/deployment_status', methods=['GET'])
-def get_deployment_status():
-    return jsonify(deployment_status)
+    print(f"Status Update: {step} - {status}")
 
 def create_funded_wallet():
-    """Create a wallet and ensure it has sufficient funds."""
-    try:
-        update_deployment_status("Creating Wallet", "loading")
-        wallet = Wallet.create(network_id="base-sepolia")
-        print(f"Created wallet with address: {wallet.default_address}")
+    """Creates and funds a wallet according to CDP SDK documentation."""
+    max_retries = 3
+    retry_delay = 5
 
-        balance = float(wallet.balance("eth"))
-        if balance >= 0.01:
-            print("Wallet already has sufficient funds.")
-            update_deployment_status("Creating Wallet", "complete")
+    try:
+        update_deployment_status("Creating new wallet on Base Sepolia...", "loading")
+        wallet = Wallet.create(network_id="base-sepolia")
+        print(f"Created wallet: {wallet.default_address.address_id}")
+
+        initial_balance = float(wallet.balance("eth"))
+        if initial_balance >= 0.01:
+            update_deployment_status("Wallet funded successfully.", "complete")
             return wallet
 
-        print("Requesting funds from faucet...")
-        update_deployment_status("Requesting ETH from Faucet", "loading")
-        wallet.faucet()
+        update_deployment_status("Requesting testnet ETH from faucet...", "loading")
+        
+        for attempt in range(max_retries):
+            try:
+                wallet.faucet()
+                time.sleep(10)  # Wait for faucet transaction
+                
+                current_balance = float(wallet.balance("eth"))
+                if current_balance >= 0.01:
+                    update_deployment_status("Wallet funded successfully.", "complete")
+                    return wallet
+                
+            except Exception as e:
+                print(f"Faucet attempt {attempt + 1} failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                else:
+                    raise Exception("Failed to fund wallet after multiple attempts")
 
-        for attempt in range(10):
-            print(f"Balance check attempt {attempt + 1}...")
-            time.sleep(5)
-            balance = float(wallet.balance("eth"))
-            if balance >= 0.01:
-                print("Sufficient balance received from faucet.")
-                update_deployment_status("Requesting ETH from Faucet", "complete")
-                return wallet
-
-        print("Failed to acquire sufficient funds.")
-        update_deployment_status("Requesting ETH from Faucet", "error")
-        return None
+        raise Exception("Failed to receive sufficient testnet ETH")
 
     except Exception as e:
-        print(f"Error in create_funded_wallet: {e}")
-        update_deployment_status("Creating Wallet", "error")
-        return None
-
-def wait_for_deployment(deployed_contract, timeout=60):
-    """Wait for contract deployment to complete, with a manual timeout."""
-    print("Waiting for deployment to complete...")
-    start_time = time.time()
-    while True:
-        try:
-            # Check if deployment has completed by verifying contract address
-            if deployed_contract.contract_address:
-                print(f"Deployment successful! Contract address: {deployed_contract.contract_address}")
-                update_deployment_status("Deploying Contract", "complete")
-                return True
-        except AttributeError:
-            print("Contract address not yet available, continuing to wait...")
-
-        # Timeout check
-        if time.time() - start_time > timeout:
-            print("Deployment timed out.")
-            update_deployment_status("Deploying Contract", "error")
-            return False
-
-        # Delay between status checks
-        time.sleep(5)
+        error_msg = str(e)
+        print(f"Error in create_funded_wallet: {error_msg}")
+        update_deployment_status("Creating new wallet on Base Sepolia...", "error")
+        raise Exception(error_msg)
 
 @app.route('/api/deploy', methods=['POST'])
 def deploy_contract():
-    """Deploy a smart contract (ERC721 or ERC1155) and return contract details."""
     try:
-        data = request.get_json()  # Ensure JSON parsing
-        if not data:
-            return jsonify({"success": False, "error": "Invalid JSON payload"}), 400
-        print(f"Received deployment request: {data}")
+        data = request.get_json()
+        print("\nReceived deployment request:", data)
 
-        # Step 1: Create Wallet
         wallet = create_funded_wallet()
         if not wallet:
+            return jsonify({"success": False, "error": "Failed to create wallet with sufficient funds"}), 500
+
+        deployed_contract = None
+        max_retries = 3
+
+        try:
+            update_deployment_status("Deploying contract...", "loading")
+
+            for attempt in range(max_retries):
+                try:
+                    if data['type'] == "ERC721":
+                        base_uri = f"https://{data['baseUri']}/"
+                        deployed_contract = wallet.deploy_nft(
+                            name=data['name'],
+                            symbol=data['symbol'],
+                            base_uri=base_uri
+                        )
+                        deployed_contract.wait()
+                        print(f"ERC721 Contract deployed at: {deployed_contract.contract_address}")
+
+                        # Mint NFT with token ID 1
+                        mint_tx = wallet.invoke_contract(
+                            contract_address=deployed_contract.contract_address,
+                            method="mint",
+                            args={"to": wallet.default_address.address_id}
+                        )
+                        mint_tx.wait()
+                        print("Minted NFT successfully")
+
+                    elif data['type'] == "ERC1155":
+                        uri = f"{data['baseUri']}/{{id}}"
+                        deployed_contract = wallet.deploy_multi_token(uri=uri)
+                        deployed_contract.wait()
+                        print(f"ERC1155 Contract deployed at: {deployed_contract.contract_address}")
+
+                        # Mint tokens with sequential IDs
+                        for token_id in range(1, data.get('tokenCount', 1) + 1):
+                            mint_tx = wallet.invoke_contract(
+                                contract_address=deployed_contract.contract_address,
+                                method="mint",
+                                args={
+                                    "to": wallet.default_address.address_id,
+                                    "id": str(token_id),
+                                    "value": "1"
+                                }
+                            )
+                            mint_tx.wait()
+                            print(f"Minted token {token_id}")
+
+                    break  # Exit retry loop if successful
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise e
+                    time.sleep(5)
+                    continue
+
+            update_deployment_status("Minting tokens...", "complete")
             return jsonify({
-                "success": False,
-                "error": "Unable to create wallet with sufficient funds."
-            }), 400
+                "success": True,
+                "contract_address": deployed_contract.contract_address,
+                "wallet_address": wallet.default_address.address_id,
+                "wallet_balance": str(wallet.balance("eth")),
+                "metadata_mapping": data.get('metadata', {})
+            })
 
-        # Step 2: Verify Wallet Balance
-        final_balance = float(wallet.balance("eth"))
-        if final_balance < 0.01:
-            update_deployment_status("Requesting ETH from Faucet", "error")
-            return jsonify({
-                "success": False,
-                "error": f"Insufficient balance ({final_balance} ETH) for deployment."
-            }), 400
-
-        # Step 3: Deploy Contract
-        contract_type = data['type']
-        name = data['name']
-        symbol = data.get('symbol', 'NFT')
-        base_uri = data['baseURI']
-
-        update_deployment_status("Deploying Contract", "loading")
-        print("Starting contract deployment...")
-        if contract_type == "ERC721":
-            deployed_contract = wallet.deploy_nft(name, symbol, base_uri)
-        elif contract_type == "ERC1155":
-            deployed_contract = wallet.deploy_multi_token(base_uri)
-        else:
-            update_deployment_status("Deploying Contract", "error")
-            return jsonify({"success": False, "error": "Unsupported contract type"}), 400
-
-        # Wait for deployment to complete with manual timeout handling
-        if not wait_for_deployment(deployed_contract, timeout=60):  # 60 seconds timeout
-            return jsonify({
-                "success": False,
-                "error": "Smart contract deployment timed out."
-            }), 500
-
-        # Step 4: Deployment Complete
-        contract_address = deployed_contract.contract_address
-        update_deployment_status("Waiting for Confirmation", "complete")
-
-        return jsonify({
-            "success": True,
-            "contract_address": contract_address,
-            "message": "Contract deployed successfully",
-            "wallet_address": str(wallet.default_address),
-            "wallet_balance": str(final_balance)
-        })
+        except Exception as deploy_error:
+            print(f"Deployment error: {str(deploy_error)}")
+            traceback.print_exc()
+            update_deployment_status("Deploying contract...", "error")
+            return jsonify({"success": False, "error": f"Contract deployment failed: {str(deploy_error)}"}), 500
 
     except Exception as e:
-        update_deployment_status("Error", "error")
-        print(f"\nERROR during deployment: {e}")
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "step": "DEPLOYMENT"
-        }), 500
+        print(f"Unexpected error: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5328, debug=True)  # Debug mode enabled for detailed logs
+    app.run(host="0.0.0.0", port=5328, debug=True)
