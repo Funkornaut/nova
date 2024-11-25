@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { pinata } from "@/utils/pinataConfig";
+import { pinata, PINATA_GATEWAY } from "@/utils/pinataConfig";
 import { UploadResponse } from "@/utils/pinataConfig";
-const pinataGateway = "amethyst-hidden-mollusk-499.mypinata.cloud";
 
 interface TokenMetadata {
   name: string;
@@ -300,7 +299,7 @@ export default function Home() {
         const tokenId = index + 1;
         metadataMapping[tokenId] = {
           ipfs: `${baseUri}${tokenId}`,
-          gateway: `https://${pinataGateway}/ipfs/${upload.IpfsHash}/${tokenId}`
+          gateway: `https://${PINATA_GATEWAY}/ipfs/${upload.IpfsHash}/${tokenId}`
         };
       });
   

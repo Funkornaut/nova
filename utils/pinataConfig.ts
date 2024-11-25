@@ -22,6 +22,7 @@ if (!pinataJwt || !pinataGateway) {
   throw new Error("Missing Pinata credentials in environment variables.");
 }
 
+export const PINATA_GATEWAY = pinataGateway;
 export const pinata = new PinataSDK({
   pinataJwt,
   pinataGateway,
