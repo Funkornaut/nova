@@ -99,7 +99,7 @@ def deploy_contract():
             for attempt in range(max_retries):
                 try:
                     if data['type'] == "ERC721":
-                        # Use the IPFS URI directly - it should be in format ipfs://<hash>/
+                        # Base URI should be ipfs://<hash>/ - contract will append tokenId
                         base_uri = data['baseUri']
                         if not base_uri.endswith('/'):
                             base_uri += '/'
@@ -112,7 +112,7 @@ def deploy_contract():
                         deployed_contract.wait()
                         print(f"ERC721 Contract deployed at: {deployed_contract.contract_address}")
 
-                        # Mint NFT with token ID 1 - it will use baseUri/1 for metadata
+                        # Mint token with ID 1, metadata will be at baseUri/1
                         mint_tx = wallet.invoke_contract(
                             contract_address=deployed_contract.contract_address,
                             method="mint",
@@ -122,17 +122,17 @@ def deploy_contract():
                         print("Minted NFT with ID 1")
 
                     elif data['type'] == "ERC1155":
-                        # For ERC1155, base URI should also end with / as contract adds {id}
                         base_uri = data['baseUri']
                         if not base_uri.endswith('/'):
                             base_uri += '/'
                             
-                        uri = f"{base_uri}{{id}}"  # Contract will replace {id} with token ID
-                        deployed_contract = wallet.deploy_multi_token(uri=uri)
+                        # Deploy with base URI, contract handles {id} replacement
+                        deployed_contract = wallet.deploy_multi_token(uri=base_uri)
                         deployed_contract.wait()
                         print(f"ERC1155 Contract deployed at: {deployed_contract.contract_address}")
 
-                        # Mint tokens with sequential IDs - each will use baseUri/<id> for metadata
+                        # Mint tokens with sequential IDs
+                        # Each token's metadata will be at baseUri/<tokenId>
                         for token_id in range(1, data.get('tokenCount', 1) + 1):
                             mint_tx = wallet.invoke_contract(
                                 contract_address=deployed_contract.contract_address,

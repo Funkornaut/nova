@@ -1,8 +1,28 @@
 # CDP SDK NFT Deployment Tool
 
-This project provides a template for deploying NFTs on Base Sepolia using the Coinbase Developer Platform (CDP) SDK and Pinata IPFS storage. This setup enables efficient NFT contract deployment and metadata storage.
+This project provides a template for deploying NFTs on Base Sepolia using the Coinbase Developer Platform (CDP) SDK and Pinata IPFS storage.
 
-**NOTE:** This sample app is for demonstration purposes. Ensure to securely manage your private keys and limit any exposure to testnet funds only. In production, follow best practices like IP whitelisting and encrypted storage of private keys.
+You can find the live version of this tool here: [Replit Template](https://replit.com/@CoinbaseDev/NFT-Deployment-Tool?v=1)
+
+## Codebase Structure
+
+### Frontend (`app/page.tsx`)
+- Main application logic and UI
+- Handles metadata creation and file preparation
+- Manages Pinata IPFS uploads via `pinata.upload.fileArray()`
+- Creates proper token URI structure for NFT contracts
+
+### Backend (`api/index.py`)
+- Flask server implementation
+- Integrates CDP SDK for contract deployment
+- Handles wallet creation and funding
+- Manages contract deployment and token minting
+- Processes both ERC-721 and ERC-1155 deployments
+
+### Configuration Files
+- `utils/pinataConfig.ts`: Pinata SDK setup and type definitions
+- `.env`: Environment variables for both frontend and backend
+- `next.config.ts`: Next.js configuration including API routes
 
 ## Features
 
@@ -14,9 +34,20 @@ This project provides a template for deploying NFTs on Base Sepolia using the Co
 - Real-time deployment progress tracking
 - Testnet ETH funding via CDP faucet
 
-## Feature Requests
+## Implementation Details
 
-If you'd like to see specific functionalities added to the CDP SDK, feel free to submit an issue. You can also reach out via the [CDP SDK Discord Channel](https://discord.gg/cdpsdk).
+### Metadata Storage
+- Located in: `app/page.tsx` (metadata creation and Pinata upload)
+- Files are uploaded using Pinata's `fileArray()` function
+- Each token's metadata file is named numerically (e.g., `1`, `2`, `3`)
+- No file extensions are used as per IPFS best practices
+
+### Contract Deployment
+- Located in: `api/index.py` (CDP SDK integration)
+- Base URI format: `ipfs://<hash>/`
+- Token URIs are automatically constructed as `<base-uri>/<token-id>`
+- ERC-721: Single token minted with ID 1
+- ERC-1155: Sequential tokens minted based on collection size
 
 ## Set Up on Replit
 
@@ -82,17 +113,16 @@ CDP_API_PRIVATE_KEY=Your CDP private key
    - Mint tokens automatically
 4. View deployed contract and token metadata on BaseScan/IPFS
 
-## Technical Notes
+## Development and Contributions
 
-- Metadata is stored on IPFS with individual token URIs in format `<base-uri>/<token-id>`
-- ERC-721 deployments mint a single token with ID 1
-- ERC-1155 deployments mint sequential tokens based on collection size
-- Base URI points to IPFS directory containing all token metadata
+Feel free to submit issues or pull requests. For feature requests specific to the CDP SDK, use the [CDP SDK Discord Channel](https://discord.gg/cdpsdk).
 
----
+## Resources
 
-For further guidance, consult:
 - [Coinbase Developer Platform Documentation](https://docs.cdp.coinbase.com/)
 - [Pinata Documentation](https://docs.pinata.cloud/)
+- [Project GitHub Repository](https://github.com/esteban-cb/cdp-sdk-nft-upload)
+- [Replit Template](https://replit.com/@CoinbaseDev/NFT-Deployment-Tool?v=1)
+
 
 **Disclaimer**: This application is for educational purposes. Adapt and secure before production use.

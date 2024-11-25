@@ -261,7 +261,7 @@ export default function Home() {
   
       updateStep(2, "loading");
   
-      // Create metadata files (with numeric filenames)
+      // Create metadata files with proper numeric filenames
       const metadataFiles = tokens.map((token, index) => {
         const metadata = {
           name: token.name,
@@ -270,12 +270,11 @@ export default function Home() {
           attributes: JSON.parse(token.attributes),
         };
   
-        // Create file with numeric filename
         const blob = new Blob([JSON.stringify(metadata, null, 2)], {
           type: "application/json",
         });
   
-        // Use numeric filename (1, 2, 3, etc.)
+        // Remove .json extension as per requirements
         return new File([blob], `${index + 1}`, {
           type: "application/json",
         });
@@ -301,7 +300,7 @@ export default function Home() {
         const tokenId = index + 1;
         metadataMapping[tokenId] = {
           ipfs: `${baseUri}${tokenId}`,
-          gateway: `https://${process.env.NEXT_PUBLIC_PINATA_GATEWAY}/ipfs/${upload.IpfsHash}/${tokenId}`
+          gateway: `https://${pinataGateway}/ipfs/${upload.IpfsHash}/${tokenId}`
         };
       });
   
