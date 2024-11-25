@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { pinata } from "@/utils/pinataConfig";
+import { UploadResponse } from "@/utils/pinataConfig";
+const pinataGateway = "amethyst-hidden-mollusk-499.mypinata.cloud";
 
 interface TokenMetadata {
   name: string;
@@ -16,7 +18,12 @@ interface TokenMetadataDirectory {
     description: string;
     image: string;
     attributes: any;
-  }
+  };
+}
+
+interface TokenURIs {
+  ipfs: string;
+  gateway: string;
 }
 
 interface DeploymentStep {
@@ -86,6 +93,7 @@ const DeploymentStatus = ({ steps }: { steps: DeploymentStep[] }) => {
   );
 };
 
+
 export default function Home() {
   const [tokenCount, setTokenCount] = useState(1);
   const [baseUri, setBaseUri] = useState("");
@@ -103,15 +111,12 @@ export default function Home() {
   const [deployedAddress, setDeployedAddress] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
   const [walletBalance, setWalletBalance] = useState("");
-  const [metadata_mapping, setMetadataMapping] = useState<
-    Record<string, string>
-  >({});
+  const [metadata_mapping, setMetadataMapping] = useState<Record<string, TokenURIs>>({});
 
   const [deploymentSteps, setDeploymentSteps] = useState<DeploymentStep[]>([
     { message: "Creating new wallet on Base Sepolia...", status: "pending" },
     {
-      message:
-        "Requesting testnet ETH from faucet (this may take a few minutes)...",
+      message: "Requesting testnet ETH from faucet (this may take a few minutes)...",
       status: "pending",
     },
     { message: "Uploading metadata to IPFS...", status: "pending" },
@@ -222,19 +227,6 @@ export default function Home() {
     setTokenCount(2);
   };
 
-  const validateIPFS = async (hash: string) => {
-    try {
-      const response = await fetch(`https://ipfs.io/ipfs/${hash}`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Retrieved IPFS Data:", data);
-      } else {
-        console.error(`Failed to fetch IPFS hash ${hash}:`, response.status);
-      }
-    } catch (error) {
-      console.error("Error retrieving IPFS data:", error);
-    }
-  };
 
   const deployContract = async (type: "ERC721" | "ERC1155") => {
     const updateStep = (index: number, status: DeploymentStep["status"]) => {
@@ -255,77 +247,80 @@ export default function Home() {
         current.map((step) => ({ ...step, status: "pending" }))
       );
   
-      // Validation checks
-      if (!tokens.length) {
-        throw new Error("Please add at least one token to deploy.");
-      }
-  
-      for (const token of tokens) {
-        if (!token.name || !token.description || !token.image || !token.attributes) {
-          throw new Error("Please fill out all fields for each token.");
-        }
+      // Validation
+      if (!tokens.length) throw new Error("Please add at least one token.");
+      tokens.forEach((token) => {
+        if (!token.name || !token.description || !token.image || !token.attributes)
+          throw new Error("All fields are required for each token.");
         try {
           JSON.parse(token.attributes);
         } catch {
           throw new Error("Invalid JSON format in attributes.");
         }
-      }
+      });
   
-      updateStep(0, "loading");
       updateStep(2, "loading");
   
-      // Upload each token's metadata separately
-      const metadataMapping: Record<string, string> = {};
-      
-      for (let i = 0; i < tokens.length; i++) {
-        const tokenId = i + 1;
-        const token = tokens[i];
-        
-        const upload = await pinata.upload.json({
+      // Create metadata files (with numeric filenames)
+      const metadataFiles = tokens.map((token, index) => {
+        const metadata = {
           name: token.name,
           description: token.description,
           image: token.image,
-          attributes: JSON.parse(token.attributes)
-        }).addMetadata({
-          name: `token-${tokenId}`,
-          keyValues: {
-            tokenId: tokenId.toString()
-          }
+          attributes: JSON.parse(token.attributes),
+        };
+  
+        // Create file with numeric filename
+        const blob = new Blob([JSON.stringify(metadata, null, 2)], {
+          type: "application/json",
         });
   
-        const ipfsHash = upload.IpfsHash;
-        metadataMapping[tokenId] = `ipfs.io/ipfs/${ipfsHash}`;
-        console.log(`Token ${tokenId} metadata uploaded with hash:`, ipfsHash);
-      }
-  
-      // Create a base folder with metadata mapping
-      const baseUpload = await pinata.upload.json({
-        name: "Collection Metadata",
-        tokens: metadataMapping
-      }).addMetadata({
-        name: "collection-metadata",
-        keyValues: {
-          type: type,
-          tokenCount: tokens.length.toString()
-        }
+        // Use numeric filename (1, 2, 3, etc.)
+        return new File([blob], `${index + 1}`, {
+          type: "application/json",
+        });
       });
   
-      const baseUri = `ipfs.io/ipfs/${baseUpload.IpfsHash}`;
+      console.log("Uploading metadata files:", metadataFiles);
+  
+      // Upload files as folder using fileArray
+      const upload = await pinata.upload.fileArray(metadataFiles);
+      console.log("Pinata upload response:", upload);
+  
+      if (!upload.IpfsHash) {
+        throw new Error("Failed to get IPFS hash from upload");
+      }
+  
+      // Construct base URI with ipfs:// protocol
+      const baseUri = `ipfs://${upload.IpfsHash}/`;
+      console.log("Base URI:", baseUri);
+  
+      // Create metadata mapping for display purposes
+      const metadataMapping: Record<string, TokenURIs> = {};
+      tokens.forEach((_, index) => {
+        const tokenId = index + 1;
+        metadataMapping[tokenId] = {
+          ipfs: `${baseUri}${tokenId}`,
+          gateway: `https://${process.env.NEXT_PUBLIC_PINATA_GATEWAY}/ipfs/${upload.IpfsHash}/${tokenId}`
+        };
+      });
+  
       setBaseUri(baseUri);
       setMetadataMapping(metadataMapping);
   
       updateStep(2, "complete");
       updateStep(3, "loading");
   
+      // Send deployment request
       const deploymentData = {
         type,
         name: type === "ERC721" ? "My NFT Collection" : "My Multi Token Collection",
         symbol: type === "ERC721" ? "NFT" : "MT",
-        baseUri: `https://${baseUri}/`,
-        metadata: metadataMapping,
-        mintTokens: true,
+        baseUri, // Send ipfs:// URI to contract
         tokenCount: tokens.length
       };
+  
+      console.log("Sending deployment data:", deploymentData);
   
       const response = await fetch("/api/deploy", {
         method: "POST",
@@ -361,6 +356,8 @@ export default function Home() {
       setDeploying(false);
     }
   };
+
+
   return (
     <main className="w-full min-h-screen p-8 flex flex-col items-center bg-gray-100">
       <h1 className="text-3xl font-bold mb-8 text-gray-800">
@@ -522,30 +519,19 @@ export default function Home() {
               </h4>
               <div className="bg-white rounded-lg p-4 space-y-2">
                 {Object.keys(metadata_mapping).length > 0 ? (
-                  Object.entries(metadata_mapping).map(
-                    ([tokenId, metadataUri]) => (
-                      <div key={tokenId} className="break-all">
-                        <span className="font-semibold">Token #{tokenId}:</span>
-                        <a
-                          href={`https://${
-                            metadataUri.startsWith("ipfs://")
-                              ? metadataUri.replace("ipfs://", "ipfs.io/ipfs/")
-                              : metadataUri
-                          }`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 ml-2"
-                        >
-                          {metadataUri.startsWith("ipfs://")
-                            ? metadataUri.replace(
-                                "ipfs://",
-                                "https://ipfs.io/ipfs/"
-                              )
-                            : metadataUri}
-                        </a>
-                      </div>
-                    )
-                  )
+                  Object.entries(metadata_mapping).map(([tokenId, uris]) => (
+                    <div key={tokenId} className="break-all">
+                      <span className="font-semibold">Token #{tokenId}:</span>
+                      <a
+                        href={uris.gateway}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 ml-2"
+                      >
+                        {uris.ipfs}
+                      </a>
+                    </div>
+                  ))
                 ) : (
                   <p className="text-gray-500">No metadata URIs available.</p>
                 )}
@@ -620,3 +606,5 @@ export default function Home() {
     </main>
   );
 }
+
+

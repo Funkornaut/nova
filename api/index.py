@@ -79,6 +79,7 @@ def create_funded_wallet():
         update_deployment_status("Creating new wallet on Base Sepolia...", "error")
         raise Exception(error_msg)
 
+
 @app.route('/api/deploy', methods=['POST'])
 def deploy_contract():
     try:
@@ -98,7 +99,11 @@ def deploy_contract():
             for attempt in range(max_retries):
                 try:
                     if data['type'] == "ERC721":
-                        base_uri = f"https://{data['baseUri']}/"
+                        # Use the IPFS URI directly - it should be in format ipfs://<hash>/
+                        base_uri = data['baseUri']
+                        if not base_uri.endswith('/'):
+                            base_uri += '/'
+                            
                         deployed_contract = wallet.deploy_nft(
                             name=data['name'],
                             symbol=data['symbol'],
@@ -107,22 +112,27 @@ def deploy_contract():
                         deployed_contract.wait()
                         print(f"ERC721 Contract deployed at: {deployed_contract.contract_address}")
 
-                        # Mint NFT with token ID 1
+                        # Mint NFT with token ID 1 - it will use baseUri/1 for metadata
                         mint_tx = wallet.invoke_contract(
                             contract_address=deployed_contract.contract_address,
                             method="mint",
                             args={"to": wallet.default_address.address_id}
                         )
                         mint_tx.wait()
-                        print("Minted NFT successfully")
+                        print("Minted NFT with ID 1")
 
                     elif data['type'] == "ERC1155":
-                        uri = f"{data['baseUri']}/{{id}}"
+                        # For ERC1155, base URI should also end with / as contract adds {id}
+                        base_uri = data['baseUri']
+                        if not base_uri.endswith('/'):
+                            base_uri += '/'
+                            
+                        uri = f"{base_uri}{{id}}"  # Contract will replace {id} with token ID
                         deployed_contract = wallet.deploy_multi_token(uri=uri)
                         deployed_contract.wait()
                         print(f"ERC1155 Contract deployed at: {deployed_contract.contract_address}")
 
-                        # Mint tokens with sequential IDs
+                        # Mint tokens with sequential IDs - each will use baseUri/<id> for metadata
                         for token_id in range(1, data.get('tokenCount', 1) + 1):
                             mint_tx = wallet.invoke_contract(
                                 contract_address=deployed_contract.contract_address,
@@ -156,12 +166,16 @@ def deploy_contract():
             print(f"Deployment error: {str(deploy_error)}")
             traceback.print_exc()
             update_deployment_status("Deploying contract...", "error")
-            return jsonify({"success": False, "error": f"Contract deployment failed: {str(deploy_error)}"}), 500
+            return jsonify({
+                "success": False, 
+                "error": f"Contract deployment failed: {str(deploy_error)}"
+            }), 500
 
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5328, debug=True)
