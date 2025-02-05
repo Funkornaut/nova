@@ -126,3 +126,30 @@ Feel free to submit issues or pull requests. For feature requests specific to th
 
 
 **Disclaimer**: This application is for educational purposes. Adapt and secure before production use.
+
+
+## Run / Install locally
+
+Install Node.js Dependencies
+```bash
+npm install
+```
+Install Python Dependencies
+```bash
+# Create a virtual environment (recommended)
+python3 -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install Python dependencies
+pip install -r api/requirements.txt
+```
+
+Run the development server
+```bash
+npm run dev
+```
